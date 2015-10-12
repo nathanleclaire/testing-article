@@ -50,44 +50,44 @@ func (fsp FakeServerPoller) PollServer() (string, error) {
 }
 
 func TestPollerJobRunLog(t *testing.T) {
-	defaultTestWaitInterval := 100 * time.Millisecond
+	waitBeforeReading := 100 * time.Millisecond
 	shortInterval := 20 * time.Millisecond
 	longInterval := 200 * time.Millisecond
 
 	testCases := []struct {
-		expectedMsg string
 		p           PollerJob
 		logger      ReadableLogger
 		sp          ServerPoller
+		expectedMsg string
 	}{
 		{
-			expectedMsg: "200 OK",
 			p:           NewPollerJob("madeup.website", shortInterval),
 			logger:      &LastEntryLogger{&MessageReader{}},
 			sp:          FakeServerPoller{"200 OK", nil},
+			expectedMsg: "200 OK",
 		},
 		{
-			expectedMsg: "500 SERVER ERROR",
 			p:           NewPollerJob("down.website", shortInterval),
 			logger:      &LastEntryLogger{&MessageReader{}},
 			sp:          FakeServerPoller{"500 SERVER ERROR", nil},
+			expectedMsg: "500 SERVER ERROR",
 		},
 		{
-			expectedMsg: "Error trying to get state: DNS probe failed",
 			p:           NewPollerJob("error.website", shortInterval),
 			logger:      &LastEntryLogger{&MessageReader{}},
 			sp:          FakeServerPoller{"", errors.New("DNS probe failed")},
+			expectedMsg: "Error trying to get state: DNS probe failed",
 		},
 		{
-			expectedMsg: "",
-			p:           NewPollerJob("some.website", longInterval),
+			p: NewPollerJob("some.website", longInterval),
 
 			// Discard first write since we want to verify that no
 			// additional logs get made after the first one (time
 			// out)
 			logger: &DiscardFirstWriteLogger{MessageReader: &MessageReader{}},
 
-			sp: FakeServerPoller{"200 OK", nil},
+			sp:          FakeServerPoller{"200 OK", nil},
+			expectedMsg: "",
 		},
 	}
 
@@ -97,10 +97,59 @@ func TestPollerJobRunLog(t *testing.T) {
 
 		go c.p.Run()
 
-		time.Sleep(defaultTestWaitInterval)
+		time.Sleep(waitBeforeReading)
 
 		if c.logger.Read() != c.expectedMsg {
-			t.Errorf("Expected message did not align with what was written:\n\t%q != %q", c.expectedMsg, c.logger.Read())
+			t.Errorf("Expected message did not align with what was written:\n\texpected: %q\n\tactual: %q", c.expectedMsg, c.logger.Read())
 		}
+	}
+}
+
+func TestPollerJobSuspendResume(t *testing.T) {
+	p := NewPollerJob("foobar.com", 20*time.Millisecond)
+	waitBeforeReading := 100 * time.Millisecond
+	expectedLogLine := "200 OK"
+	normalServerPoller := &FakeServerPoller{expectedLogLine, nil}
+
+	logger := &LastEntryLogger{&MessageReader{}}
+	p.Logger = logger
+	p.ServerPoller = normalServerPoller
+
+	// First start the job / polling
+	go p.Run()
+
+	time.Sleep(waitBeforeReading)
+
+	if logger.Read() != expectedLogLine {
+		t.Errorf("Line read from logger does not match what was expected:\n\texpected: %q\n\tactual: %q", expectedLogLine, logger.Read())
+	}
+
+	// Then suspend the job
+	if err := p.Suspend(); err != nil {
+		t.Errorf("Expected suspend error to be nil but got %q", err)
+	}
+
+	// If this log writes, we know we are polling the server when we're not
+	// supposed to (job should be suspended).
+	p.ServerPoller = &FakeServerPoller{"", errors.New("Shouldn't be polling (and consequently writing to the log) right now because the job is suspended")}
+
+	// Give it a second to poll if it's going to poll
+	time.Sleep(waitBeforeReading)
+
+	if logger.Read() != expectedLogLine {
+		t.Errorf("Line read from logger does not match what was expected:\n\texpected: %q\n\tactual: %q", expectedLogLine, logger.Read())
+	}
+
+	p.ServerPoller = normalServerPoller
+
+	if err := p.Resume(); err != nil {
+		t.Errorf("Expected resume error to be nil but got %q", err)
+	}
+
+	// Give it a second to poll if it's going to poll
+	time.Sleep(waitBeforeReading)
+
+	if logger.Read() != expectedLogLine {
+		t.Errorf("Line read from logger does not match what was expected:\n\texpected: %q\n\tactual: %q", expectedLogLine, logger.Read())
 	}
 }
