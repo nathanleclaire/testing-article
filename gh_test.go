@@ -49,11 +49,11 @@ func TestGetReleaseTagMessage(t *testing.T) {
 	for _, c := range cases {
 		msg, err := getReleaseTagMessage(c.f, c.repo)
 		if !reflect.DeepEqual(err, c.expectedErr) {
-			t.Fatalf("Expected err to be %q but it was %q", c.expectedErr, err)
+			t.Errorf("Expected err to be %q but it was %q", c.expectedErr, err)
 		}
 
 		if c.expectedMsg != msg {
-			t.Fatalf("Expected %q but got %q", c.expectedMsg, msg)
+			t.Errorf("Expected %q but got %q", c.expectedMsg, msg)
 		}
 	}
 }
