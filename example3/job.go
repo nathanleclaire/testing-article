@@ -11,30 +11,30 @@ type Logger interface {
 	Log(...interface{})
 }
 
-type PollerLogger struct{}
-
-type ServerPoller interface {
-	PollServer() (string, error)
-}
-
-type URLServerPoller struct {
-	resourceUrl string
-}
-
 type SuspendResumer interface {
 	Suspend() error
 	Resume() error
-}
-
-type PollSuspendResumer struct {
-	SuspendCh chan bool
-	ResumeCh  chan bool
 }
 
 type Job interface {
 	Logger
 	SuspendResumer
 	Run() error
+}
+
+type ServerPoller interface {
+	PollServer() (string, error)
+}
+
+type PollerLogger struct{}
+
+type URLServerPoller struct {
+	resourceUrl string
+}
+
+type PollSuspendResumer struct {
+	SuspendCh chan bool
+	ResumeCh  chan bool
 }
 
 type PollerJob struct {
@@ -68,7 +68,7 @@ func (usp *URLServerPoller) PollServer() (string, error) {
 		return "", err
 	}
 
-	return fmt.Sprint(usp.resourceUrl, "--", resp.Status), nil
+	return fmt.Sprint(usp.resourceUrl, " -- ", resp.Status), nil
 }
 
 func (ssr *PollSuspendResumer) Suspend() error {
@@ -102,16 +102,17 @@ func (p PollerJob) Run() error {
 }
 
 func main() {
-	p := NewPollerJob("http://nathanleclaire.com", 1*time.Second)
-	go p.Run()
+	var j Job
+	j = NewPollerJob("http://nathanleclaire.com", 1*time.Second)
+	go j.Run()
 	time.Sleep(5 * time.Second)
 
-	p.Log("Suspending monitoring of server for 5 seconds...")
-	p.Suspend()
+	j.Log("Suspending monitoring of server for 5 seconds...")
+	j.Suspend()
 	time.Sleep(5 * time.Second)
 
-	p.Log("Resuming job...")
-	p.Resume()
+	j.Log("Resuming job...")
+	j.Resume()
 
 	// Wait for a bit before exiting
 	time.Sleep(5 * time.Second)
